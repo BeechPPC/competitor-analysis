@@ -6,8 +6,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Shopping Competitor Analysis',
-  description: 'Analyze your competition and optimize your shopping campaigns',
+  title: 'CompetitorPro - Dominate Your Competition with SERP Analysis',
+  description: 'Unlock the power of SERP analysis to track competitors, optimize pricing, and boost your market share. Get real-time insights into your competition\'s strategies.',
 }
 
 export default function RootLayout({
