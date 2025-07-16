@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, Eye, DollarSign, BarChart3, AlertCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import { Search, TrendingUp, Eye, DollarSign, BarChart3, AlertCircle, ExternalLink, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { getSheetsService, UserConfiguration } from '../../utils/sheetsService';
 
 // TypeScript interfaces
 interface Competitor {
@@ -52,12 +53,29 @@ export default function CompetitorAnalysisApp() {
   const [analysis, setAnalysis] = useState<KeywordAnalysis[] | null>(null);
   const [activeTab, setActiveTab] = useState('setup');
   const [showDemo, setShowDemo] = useState(false);
+  
+  // New state for Google Sheets integration
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [sheetsService, setSheetsService] = useState<any>(null);
 
   const handleKeywordChange = (index: number, value: string) => {
     const newKeywords = [...keywords];
     newKeywords[index] = value;
     setKeywords(newKeywords);
   };
+
+  // Initialize Google Sheets service
+  useEffect(() => {
+    try {
+      const service = getSheetsService();
+      setSheetsService(service);
+    } catch (error) {
+      console.error('Failed to initialize Google Sheets service:', error);
+      setConfigError('Google Sheets service not available. Please check your API key configuration.');
+    }
+  }, []);
 
   const extractDomain = (url: string) => {
     try {
@@ -175,20 +193,55 @@ export default function CompetitorAnalysisApp() {
 
   const analyzeCompetition = async () => {
     setLoading(true);
+    setSavingConfig(true);
+    setConfigError(null);
+    setConfigSaved(false);
+    
     try {
-      // Simulate API calls
+      // Validate form data
+      const validKeywords = keywords.filter(k => k.trim());
+      if (!brandUrl.trim()) {
+        throw new Error('Brand URL is required');
+      }
+      if (validKeywords.length === 0) {
+        throw new Error('At least one keyword is required');
+      }
+
+      // Save configuration to Google Sheets
+      if (sheetsService) {
+        const userConfig: Omit<UserConfiguration, 'createdAt' | 'updatedAt'> = {
+          brandUrl: brandUrl.trim(),
+          keywords: validKeywords,
+          serpApiKey: serpApiKey.trim() || undefined,
+          reportingPeriod
+        };
+
+        // Validate configuration
+        const validation = sheetsService.validateConfiguration(userConfig);
+        if (!validation.isValid) {
+          throw new Error(validation.errors.join(', '));
+        }
+
+        // Save to Google Sheets
+        await sheetsService.saveConfiguration(userConfig);
+        setConfigSaved(true);
+        console.log('Configuration saved to Google Sheets successfully');
+      }
+
+      // Simulate API calls for analysis
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const brandDomain = extractDomain(brandUrl);
-      const validKeywords = keywords.filter(k => k.trim());
       
       // Use demo data for now - replace with actual API calls later
       loadDemoData();
       
     } catch (error) {
       console.error('Analysis failed:', error);
+      setConfigError(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
+      setSavingConfig(false);
     }
   };
 
@@ -367,16 +420,41 @@ export default function CompetitorAnalysisApp() {
                 </div>
               </div>
 
+              {/* Configuration Status */}
+              {configSaved && (
+                <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span className="text-green-800 font-medium">Configuration saved to Google Sheets successfully!</span>
+                  </div>
+                  <p className="text-sm text-green-700 mt-1">
+                    Your data has been automatically configured in Google Sheets. The Google Apps Script will now use this configuration.
+                  </p>
+                </div>
+              )}
+
+              {configError && (
+                <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <XCircle className="w-5 h-5 text-red-600" />
+                    <span className="text-red-800 font-medium">Configuration Error</span>
+                  </div>
+                  <p className="text-sm text-red-700 mt-1">{configError}</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mt-8">
                 <button
                   onClick={analyzeCompetition}
-                  disabled={loading || !brandUrl || keywords.filter(k => k.trim()).length === 0}
+                  disabled={loading || !brandUrl || keywords.filter(k => k.trim()).length === 0 || !sheetsService}
                   className="bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {loading ? (
                     <>
                       <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span>Analyzing Competition...</span>
+                      <span>
+                        {savingConfig ? 'Saving Configuration...' : 'Analyzing Competition...'}
+                      </span>
                     </>
                   ) : (
                     <>
@@ -409,6 +487,22 @@ export default function CompetitorAnalysisApp() {
                   </p>
                   <p className="text-xs text-blue-700">
                     The demo shows real competitor insights for electronics retailers in the Australian market.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Google Sheets Integration Info */}
+            <div className="bg-green-50 p-6 rounded-xl border border-green-200">
+              <div className="flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-green-900 mb-1">Automatic Google Sheets Configuration</h3>
+                  <p className="text-sm text-green-800 mb-2">
+                    Your configuration is automatically saved to Google Sheets when you start analysis. No more manual editing of Google Apps Script!
+                  </p>
+                  <p className="text-xs text-green-700">
+                    The Google Apps Script will read your configuration from the "Config" sheet and run automatically with your data.
                   </p>
                 </div>
               </div>
